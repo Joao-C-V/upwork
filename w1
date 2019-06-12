@@ -1,0 +1,134 @@
+import pandas as pd
+import numpy as np
+import datetime as dt
+import matplotlib.pyplot as plt
+import os, json, requests, pickle
+from scipy.stats import skew
+from shapely.geometry import Point,Polygon,MultiPoint,MultiPolygon
+from scipy.stats import ttest_ind, f_oneway, lognorm, levy, skew, chisquare
+from sklearn.preprocessing import normalize, scale
+from tabulate import tabulate
+from shapely.geometry import Point,Polygon,MultiPoint
+import seaborn as sns
+#%matplotlib inline
+import warnings
+from math import sin, cos, sqrt, atan2, radians
+warnings.filterwarnings('ignore')
+
+
+ROWS_SAMPLE = 8000
+
+df = pd.read_csv('green_tripdata_2016-02.csv')
+
+print ("Number of rows:", df.shape[0])
+print ("Number of columns: ", df.shape[1])
+#_________________________________________________
+df.describe()
+
+df['Pickup_longitude'].describe()
+df['Dropoff_longitude'].describe()
+df['Pickup_latitude'].describe()
+df['Dropoff_latitude'].describe()
+
+
+# Delete locations far away from the others
+longitude_limit = [-74.1, -73.7]
+latitude_limit = [40.5, 41]
+df = df[(df.Pickup_longitude.between(longitude_limit[0], longitude_limit[1], inclusive=False))]
+df = df[(df.Dropoff_longitude.between(longitude_limit[0], longitude_limit[1], inclusive=False))]
+df = df[(df.Pickup_latitude.between(latitude_limit[0], latitude_limit[1], inclusive=False))]
+df = df[(df.Dropoff_latitude.between(latitude_limit[0], latitude_limit[1], inclusive=False))]
+
+df.head()
+
+df["pickup_datetime"] = pd.to_datetime(df["lpep_pickup_datetime"])
+df["dropoff_datetime"] = pd.to_datetime(df["Lpep_dropoff_datetime"])
+
+df_trimmed = df.sample(ROWS_SAMPLE)
+df_trimmed.head()
+
+
+# __________________________________________________________________
+# Convert pickup and drop off datetime variable to their specific format
+data['Pickup_dt'] = data.lpep_pickup_datetime.apply(lambda x:dt.datetime.strptime(x,"%Y-%m-%d %H:%M:%S"))
+data['Dropoff_dt'] = data.Lpep_dropoff_datetime.apply(lambda x:dt.datetime.strptime(x,"%Y-%m-%d %H:%M:%S"))
+
+# A variable for pickup hours
+data['Pickup_hour'] = data.Pickup_dt.apply(lambda x:x.hour)
+
+# Mean and Median of trip distance by pickup hour
+# I will generate the table but also generate a plot for a better visualization
+
+fig,ax = plt.subplots(1,1,figsize=(9,5)) # prepare fig to plot mean and median values
+# use a pivot table to aggregate Trip_distance by hour
+table1 = data.pivot_table(index='Pickup_hour', values='Trip_distance',aggfunc=('mean','median')).reset_index()
+# rename columns
+table1.columns = ['Hour','Mean_distance','Median_distance']
+table1[['Mean_distance','Median_distance']].plot(ax=ax)
+plt.ylabel('Metric (miles)')
+plt.xlabel('Hours after midnight')
+plt.title('Distribution of trip distance by pickup hour')
+#plt.xticks(np.arange(0,30,6)+0.35,range(0,30,6))
+plt.xlim([0,23])
+plt.savefig('Question3_1.jpeg',format='jpeg')
+plt.show()
+print ('-----Trip distance by hour of the day-----\n')
+print (tabulate(table1.values.tolist(),["Hour","Mean distance","Median distance"]))
+# __________________________________________________________________
+
+
+# MOST POPULAR PICKUP LOCATIONS WEEKDAYS VS WEEKENDS
+df_trimmed['WEEKEND'] = ((pd.DatetimeIndex(df_trimmed.pickup_datetime).dayofweek) // 5 == 1).astype(float)
+
+longitude_weekend = list(df_trimmed.Pickup_longitude[df_trimmed.WEEKEND == 1])
+latitude_weekend = list(df_trimmed.Pickup_latitude[df_trimmed.WEEKEND == 1])
+data_weekend = pd.DataFrame({'latitude': latitude_weekend, 'longitude': longitude_weekend})
+
+longitude_weekday = list(df_trimmed.Pickup_longitude[df_trimmed.WEEKEND == 0])
+latitude_weekday = list(df_trimmed.Pickup_latitude[df_trimmed.WEEKEND == 0])
+data_weekday = pd.DataFrame({'latitude': latitude_weekday, 'longitude': longitude_weekday})
+
+print('Most popular pickup locations on weekdends:')
+sns.set_style("whitegrid")
+ax = sns.regplot(x="longitude", y="latitude", data=data_weekend, scatter=True, fit_reg=False, scatter_kws={"s": 0.3})
+plt.show()
+
+print('Most popular pickup locations on weekdays:')
+sns.set_style("whitegrid")
+ax = sns.regplot(x="longitude", y="latitude", data=data_weekday, scatter=True, fit_reg=False, scatter_kws={"s": 0.3})
+plt.show()
+# __________________________________________________________________
+
+# NEAREST PICKUP LOCATION:
+aux1 = 0
+aux2 = 0
+distance_lat = 0
+distance_long = 0
+
+# approximate radius of earth in km
+R = 6373.0
+
+longitude = list(df_trimmed.Pickup_longitude)
+latitude = list(df_trimmed.Pickup_latitude)
+distance = list(df_trimmed.Pickup_longitude)
+
+
+longitude_self = float(input("Enter your longitude: "))
+latitude_self = float(input("Enter your latitude: "))
+
+# Calculating distances based on the Haversine formula:
+for i in range(0, len(longitude)):
+    distance_lat = radians(abs(latitude_self)) - radians(abs(latitude[i]))
+    distance_long = radians(abs(longitude_self)) - radians(abs(longitude[i]))
+    aux1 = sin(distance_lat / 2)**2 + cos(latitude[i]) * cos(latitude_self) * sin(distance_long / 2)**2
+    aux2 = 2 * atan2(sqrt(aux1), sqrt(1 - aux1))
+    distance[i] = R * aux2
+
+data = pd.DataFrame({'latitude': latitude, 'longitude': longitude, 'distance_km': distance})
+
+longitude_go = list(data.longitude[data.distance_km == data.distance_km.min()])
+latitude_go = list(data.latitude[data.distance_km == data.distance_km.min()])
+
+print("You should go to latitude: ", latitude_go[0])
+print("You should go to longitude: ", longitude_go[0])
+print("You are ", data.distance_km.min(), " km away")
